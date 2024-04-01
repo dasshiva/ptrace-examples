@@ -14,6 +14,8 @@
 
 /* Linux */
 #include <syscall.h>
+#include <elf.h>
+#include <sys/uio.h>
 #include <sys/ptrace.h>
 
 #define FATAL(...) \
@@ -54,15 +56,19 @@ main(int argc, char **argv)
 
         /* Gather system call arguments */
         struct user_regs_struct regs;
-        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1)
+	struct iovec iov;
+	iov.iov_base = &regs;
+	iov.iov_len = sizeof(struct user_regs_struct);
+        if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1)
             FATAL("%s", strerror(errno));
-        long syscall = regs.orig_rax;
+        long syscall = regs.regs[8];
+	printf("System call no = %ld ", syscall);
 
         /* Print a representation of the system call */
-        fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
+        /*fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
                 syscall,
                 (long)regs.rdi, (long)regs.rsi, (long)regs.rdx,
-                (long)regs.r10, (long)regs.r8,  (long)regs.r9);
+                (long)regs.r10, (long)regs.r8,  (long)regs.r9); */
 
         /* Run system call and stop on exit */
         if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
@@ -71,14 +77,14 @@ main(int argc, char **argv)
             FATAL("%s", strerror(errno));
 
         /* Get system call result */
-        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1) {
+        if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1) {
             fputs(" = ?\n", stderr);
             if (errno == ESRCH)
-                exit(regs.rdi); // system call was _exit(2) or similar
+                exit(0); // system call was _exit(2) or similar
             FATAL("%s", strerror(errno));
-        }
+        } 
 
         /* Print system call result */
-        fprintf(stderr, " = %ld\n", (long)regs.rax);
+        printf("Result = %ld\n", (long)regs.regs[0]);
     }
 }
