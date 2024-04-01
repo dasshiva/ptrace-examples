@@ -61,14 +61,14 @@ main(int argc, char **argv)
 	iov.iov_len = sizeof(struct user_regs_struct);
         if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1)
             FATAL("%s", strerror(errno));
-        long syscall = regs.regs[8];
-	printf("System call no = %ld ", syscall);
 
+#ifdef __aarch64__
+        long syscall = regs.regs[8];
         /* Print a representation of the system call */
-        /*fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
+        fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
                 syscall,
-                (long)regs.rdi, (long)regs.rsi, (long)regs.rdx,
-                (long)regs.r10, (long)regs.r8,  (long)regs.r9); */
+                (long)regs.regs[0], (long)regs.regs[1], (long)regs.regs[2],
+                (long)regs.regs[3], (long)regs.regs[4],  (long)regs.regs[5]); 
 
         /* Run system call and stop on exit */
         if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
@@ -80,11 +80,37 @@ main(int argc, char **argv)
         if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1) {
             fputs(" = ?\n", stderr);
             if (errno == ESRCH)
-                exit(0); // system call was _exit(2) or similar
+                exit(regs.regs[0]); // system call was _exit(2) or similar
             FATAL("%s", strerror(errno));
         } 
 
         /* Print system call result */
-        printf("Result = %ld\n", (long)regs.regs[0]);
+        fprintf(stderr, " = %ld\n", (long)regs.regs[0]);
+#else
+	long syscall = regs.orig_rax;
+
+        /* Print a representation of the system call */
+        fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
+                syscall,
+                (long)regs.rdi, (long)regs.rsi, (long)regs.rdx,
+                (long)regs.r10, (long)regs.r8,  (long)regs.r9);
+
+        /* Run system call and stop on exit */
+        if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
+            FATAL("%s", strerror(errno));
+        if (waitpid(pid, 0, 0) == -1)
+            FATAL("%s", strerror(errno));
+
+        /* Get system call result */
+        if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1) {
+            fputs(" = ?\n", stderr);
+            if (errno == ESRCH)
+                exit(regs.rdi); // system call was _exit(2) or similar
+            FATAL("%s", strerror(errno));
+        }
+
+        /* Print system call result */
+        fprintf(stderr, " = %ld\n", (long)regs.rax);
+#endif
     }
 }
